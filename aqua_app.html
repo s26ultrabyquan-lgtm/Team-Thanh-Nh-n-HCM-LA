@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQUA · Bảng Theo Dõi Vi Phạm</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC8O3nQ4XLH4YGYZ8I4EMWkP7ULeK8_87A",
+    authDomain: "team-thanh-nhan-hcm-la.firebaseapp.com",
+    databaseURL: "https://team-thanh-nhan-hcm-la-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "team-thanh-nhan-hcm-la",
+    storageBucket: "team-thanh-nhan-hcm-la.firebasestorage.app",
+    messagingSenderId: "485831723375",
+    appId: "1:485831723375:web:aeb6f4e5db3fca26c5009a"
+  };
+
+  const fbApp = initializeApp(firebaseConfig);
+  const db = getDatabase(fbApp);
+  const notesRef = ref(db, "aqua_violations/notes");
+
+  // Expose to global scope so the non-module script below can use it
+  window.__fb = { db, notesRef, onValue, set };
+</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #EEF2F7; min-height: 100vh; padding-bottom: 40px; }
+
+  /* LOGIN */
+  .login-overlay { position: fixed; inset: 0; background: linear-gradient(135deg,#0D47A1,#1976D2); z-index: 999; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-box { background: #fff; border-radius: 20px; padding: 32px 28px; width: 100%; max-width: 340px; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+  .login-logo { text-align: center; font-size: 36px; margin-bottom: 8px; }
+  .login-title { text-align: center; font-size: 18px; font-weight: 800; color: #0D47A1; margin-bottom: 4px; }
+  .login-sub { text-align: center; font-size: 12px; color: #999; margin-bottom: 24px; }
+  .login-label { font-size: 12px; font-weight: 700; color: #555; margin-bottom: 6px; display: block; }
+  .login-input { width: 100%; border: 1.5px solid #DDEAF8; border-radius: 10px; padding: 10px 14px; font-size: 14px; outline: none; margin-bottom: 12px; font-family: inherit; }
+  .login-input:focus { border-color: #1976D2; }
+  .login-btn { width: 100%; background: #1976D2; color: #fff; border: none; border-radius: 10px; padding: 12px; font-weight: 700; font-size: 15px; cursor: pointer; font-family: inherit; }
+  .login-err { color: #C62828; font-size: 12px; text-align: center; margin-top: 10px; display: none; }
+  .view-only-btn { width: 100%; background: #F0F4F8; color: #555; border: none; border-radius: 10px; padding: 10px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px; }
+
+  /* HEADER */
+  .header { background: linear-gradient(135deg,#0D47A1 0%,#1976D2 60%,#42A5F5 100%); padding: 20px 20px 0; }
+  .header-inner { max-width: 1100px; margin: 0 auto; }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+  .header-eyebrow { color: #90CAF9; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; }
+  .header-title { color: #fff; font-size: 20px; font-weight: 800; margin-top: 4px; }
+  .header-sub { color: #BBDEFB; font-size: 12px; margin-top: 3px; }
+  .header-btns { display: flex; gap: 8px; flex-wrap: wrap; align-self: center; }
+  .btn-summary { background: #fff; color: #0D47A1; border: none; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-excel { background: #43A047; color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-reset { background: #E53935; color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .confirm-box { background: #fff; border-radius: 18px; padding: 28px 24px; width: 100%; max-width: 320px; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,.3); }
+  .confirm-icon { font-size: 40px; margin-bottom: 12px; }
+  .confirm-title { font-size: 17px; font-weight: 800; color: #C62828; margin-bottom: 8px; }
+  .confirm-sub { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 20px; }
+  .confirm-btns { display: flex; gap: 10px; }
+  .confirm-yes { flex: 1; background: #E53935; color: #fff; border: none; border-radius: 10px; padding: 12px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .confirm-no  { flex: 1; background: #F0F4F8; color: #555; border: none; border-radius: 10px; padding: 12px; font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .mode-badge { background: rgba(255,255,255,.2); color: #fff; border-radius: 20px; padding: 4px 12px; font-size: 11px; font-weight: 700; align-self: center; }
+  .tabs { display: flex; gap: 4px; margin-top: 16px; }
+  .tab { background: transparent; color: #BBDEFB; border: none; border-radius: 8px 8px 0 0; padding: 8px 18px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all .15s; }
+  .tab.active { background: #fff; color: #0D47A1; }
+
+  /* LEGEND */
+  .legend-wrap { max-width: 1100px; margin: 16px auto 0; padding: 0 16px; }
+  .legend { background: #fff; border-radius: 12px; padding: 12px 18px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .legend-title { font-size: 11px; color: #999; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+  .legend-items { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .badge { background: #E3F2FD; color: #1565C0; border-radius: 6px; padding: 2px 8px; font-weight: 700; }
+
+  /* TABLES */
+  .tables-wrap { max-width: 1100px; margin: 16px auto 0; padding: 0 16px; display: flex; flex-direction: column; gap: 20px; }
+  .region-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,.07); overflow: hidden; }
+  .region-header { padding: 12px 20px; display: flex; align-items: center; gap: 10px; }
+  .region-name { color: #fff; font-weight: 800; font-size: 16px; letter-spacing: .5px; }
+  .region-count { margin-left: auto; background: rgba(255,255,255,.2); color: #fff; border-radius: 20px; padding: 2px 12px; font-size: 12px; font-weight: 600; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #F5F7FA; }
+  th { padding: 10px 8px; text-align: center; color: #1565C0; font-weight: 700; border-bottom: 2px solid #E8EEF6; min-width: 70px; }
+  th.shop-col { padding: 10px 16px; text-align: left; color: #555; min-width: 170px; }
+  th.total-col { color: #E65100; }
+  td { padding: 10px 8px; text-align: center; border-bottom: 1px solid #EEF2F8; }
+  td.shop-td { padding: 10px 16px; text-align: left; color: #1A2A4A; font-weight: 600; }
+  tr.even { background: #fff; }
+  tr.odd { background: #FAFBFD; }
+  tr:hover td { background: #E8F4FD !important; }
+  .shop-num { width: 22px; height: 22px; border-radius: 6px; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; margin-right: 8px; flex-shrink: 0; }
+  .vio-btn { border-radius: 8px; padding: 5px 12px; font-weight: 700; font-size: 14px; cursor: pointer; min-width: 38px; transition: all .12s; }
+  .vio-zero { background: #F0F4F8; color: #BBB; border: 1.5px solid #DDE3EE; }
+  .vio-low  { background: #FFF8E1; color: #E65100; border: 1.5px solid #FFD54F; }
+  .vio-high { background: #FFEBEE; color: #C62828; border: 1.5px solid #EF9A9A; }
+  .vio-view { background: #F0F4F8; color: #555; border: 1.5px solid #DDE3EE; cursor: default; }
+  .total-badge { border-radius: 20px; padding: 3px 12px; font-weight: 800; font-size: 14px; }
+  .total-zero { background: #E8F5E9; color: #2E7D32; }
+  .total-low  { background: #FFF3E0; color: #E65100; }
+  .total-high { background: #FFEBEE; color: #C62828; }
+
+  /* MODAL */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal { background: #fff; border-radius: 18px; width: 100%; max-width: 460px; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 12px 48px rgba(0,0,0,.22); }
+  .modal-header { background: linear-gradient(135deg,#0D47A1,#1976D2); padding: 16px 20px; border-radius: 18px 18px 0 0; }
+  .modal-eyebrow { color: #90CAF9; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .modal-title { color: #fff; font-weight: 800; font-size: 16px; margin-top: 3px; }
+  .modal-sub { color: #BBDEFB; font-size: 12px; margin-top: 2px; }
+  .modal-list { overflow-y: auto; flex: 1; padding: 14px 18px; }
+  .empty-msg { text-align: center; color: #CCC; padding: 24px 0; font-size: 14px; }
+  .note-item { background: #F5F9FF; border-radius: 10px; padding: 10px 12px; border: 1px solid #DCEEFB; display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+  .note-date { font-size: 11px; color: #1565C0; font-weight: 700; margin-bottom: 4px; }
+  .note-text { font-size: 13px; color: #333; }
+  .note-actions { display: flex; gap: 2px; flex-shrink: 0; }
+  .icon-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px; }
+  .edit-row { display: flex; gap: 6px; }
+  .edit-input { flex: 1; border: 1.5px solid #1976D2; border-radius: 7px; padding: 4px 8px; font-size: 13px; outline: none; }
+  .btn-save { background: #1976D2; color: #fff; border: none; border-radius: 7px; padding: 4px 10px; cursor: pointer; font-size: 12px; font-weight: 700; }
+  .btn-cancel { background: #EEE; border: none; border-radius: 7px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+  .modal-input { padding: 12px 18px; border-top: 1px solid #EEF2F8; }
+  .date-input { border: 1.5px solid #DDEAF8; border-radius: 8px; padding: 7px 10px; font-size: 13px; outline: none; margin-bottom: 8px; }
+  .note-row { display: flex; gap: 8px; }
+  .note-input { flex: 1; border: 1.5px solid #DDEAF8; border-radius: 8px; padding: 8px 12px; font-size: 13px; outline: none; font-family: inherit; }
+  .btn-add { background: #1976D2; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; font-size: 14px; }
+  .modal-footer { padding: 0 18px 16px; }
+  .btn-close { width: 100%; background: #F0F4F8; color: #555; border: none; border-radius: 10px; padding: 10px; font-weight: 600; cursor: pointer; font-family: inherit; font-size: 14px; }
+
+  /* SUMMARY */
+  .summary-modal { max-width: 500px; }
+  .summary-header { display: flex; align-items: center; justify-content: space-between; }
+  .btn-copy { background: #fff; color: #0D47A1; border: none; border-radius: 10px; padding: 8px 16px; font-weight: 700; cursor: pointer; font-size: 13px; transition: all .2s; }
+  .btn-copy.copied { background: #43A047; color: #fff; }
+  .summary-body { overflow-y: auto; flex: 1; padding: 16px 20px; }
+  .summary-pre { font-family: inherit; font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.8; margin: 0; }
+
+  .save-toast { position: fixed; bottom: 20px; right: 20px; background: #43A047; color: #fff; border-radius: 10px; padding: 8px 16px; font-size: 13px; font-weight: 700; z-index: 999; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .save-toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">📊</div>
+    <div class="login-title">AQUA · Vi Phạm</div>
+    <div class="login-sub">Nhập mật khẩu để chỉnh sửa</div>
+    <label class="login-label">Mật khẩu</label>
+    <input class="login-input" type="password" id="pwInput" placeholder="••••••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">🔓 Đăng nhập chỉnh sửa</button>
+    <div class="login-err" id="loginErr">Sai mật khẩu, thử lại!</div>
+    <button class="view-only-btn" onclick="enterViewOnly()">👁 Xem không cần mật khẩu</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" style="display:none">
+  <div class="header">
+    <div class="header-inner">
+      <div class="header-top">
+        <div>
+          <div class="header-eyebrow">AQUA · Sales Tracker</div>
+          <div class="header-title">📊 Bảng Theo Dõi Vi Phạm</div>
+          <div class="header-sub">Ghi lỗi theo ngày · Tổng hợp gửi nhóm mỗi Chủ Nhật</div>
+        </div>
+        <div class="header-btns">
+          <span class="mode-badge" id="modeBadge"></span>
+          <button class="btn-excel" onclick="exportExcel()">📥 Xuất Excel</button>
+          <button class="btn-summary" onclick="openSummary()">📤 Tổng hợp</button>
+          <button class="btn-reset" id="btnReset" style="display:none" onclick="openReset()">🗑 Reset tháng mới</button>
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+  </div>
+
+  <div class="legend-wrap">
+    <div class="legend">
+      <div class="legend-title">Chú thích</div>
+      <div class="legend-items" id="legend"></div>
+    </div>
+  </div>
+
+  <div class="tables-wrap" id="tables"></div>
+</div>
+
+<!-- Note Modal -->
+<div class="overlay" id="noteModal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-eyebrow">Ghi nhận lỗi</div>
+      <div class="modal-title" id="mShop"></div>
+      <div class="modal-sub" id="mVio"></div>
+    </div>
+    <div class="modal-list" id="mList"></div>
+    <div class="modal-input" id="mInput">
+      <div><input type="date" class="date-input" id="mDate"></div>
+      <div class="note-row">
+        <input class="note-input" id="mNote" placeholder="Mô tả lỗi..." onkeydown="if(event.key==='Enter')addNote()">
+        <button class="btn-add" onclick="addNote()">+ Ghi</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-close" onclick="closeNote()">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Modal -->
+<div class="overlay" id="summaryModal" style="display:none">
+  <div class="modal summary-modal">
+    <div class="modal-header summary-header">
+      <div>
+        <div class="modal-eyebrow">Cuối tuần</div>
+        <div class="modal-title">Tổng hợp gửi nhóm</div>
+      </div>
+      <button class="btn-copy" id="btnCopy" onclick="copySummary()">📋 Copy</button>
+    </div>
+    <div class="summary-body">
+      <pre class="summary-pre" id="summaryText"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-close" onclick="document.getElementById('summaryModal').style.display='none'">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Confirm -->
+<div class="confirm-overlay" id="resetModal" style="display:none">
+  <div class="confirm-box">
+    <div class="confirm-icon">⚠️</div>
+    <div class="confirm-title">Reset tháng mới?</div>
+    <div class="confirm-sub">Toàn bộ dữ liệu lỗi sẽ bị xóa sạch.<br>Nên xuất Excel trước khi reset!</div>
+    <div class="confirm-btns">
+      <button class="confirm-no" onclick="document.getElementById('resetModal').style.display='none'">Huỷ</button>
+      <button class="confirm-yes" onclick="doReset()">Xóa hết!</button>
+    </div>
+  </div>
+</div>
+
+<div class="save-toast" id="saveToast">✅ Đã lưu!</div>
+
+<script>
+const PASSWORD = "ThanhNhan2026@";
+const VIOLATIONS = [
+  { id: 1, short: "L1", label: "Không nắm rõ chương trình AQUA", excelLabel: "Không nắm rõ CT AQUA" },
+  { id: 2, short: "L2", label: "Không nắm SP/CT đối thủ, chuỗi", excelLabel: "Không nắm SP/CT đối thủ" },
+  { id: 3, short: "L3", label: "Trưng bày sai quy định + quầy kệ dơ", excelLabel: "Trưng bày sai + kệ dơ" },
+  { id: 4, short: "L4", label: "Không tham gia training/Họp/Trễ giờ", excelLabel: "Không training/Họp/Trễ" },
+  { id: 5, short: "L5", label: "Không gửi/làm sai báo cáo", excelLabel: "Không gửi/sai báo cáo" },
+];
+const REGIONS = [
+  { name: "HỒ CHÍ MINH", color: "#1565C0", shops: [
+    "500 DBT","106 NTT","1521 HTP","740 TKTQ","2148 VL","542 CMT8","636 KDV",
+    "953 TL10","677 HTP","54 Tên Lửa","428 Nguyễn Thị Thập","416 Hậu Giang",
+    "506 Nguyễn Văn Tạo","15 Phạm Hùng","C2/5 Quách Điêu","Hưng Long",
+    "173 Bình Hưng","382 NDT","21 TN","3 Tháng 2","189A CQ","Lê V. Lương",
+  ]},
+  { name: "LONG AN", color: "#00695C", shops: [
+    "Đồng Thành","Kiến Tường","Lộc Giang","Hậu Nghĩa","Mỹ Hạnh Nam","Đức Hòa Hạ",
+  ]},
+];
+
+const STORAGE_KEY = "aqua_violations_v1"; // kept for backward-compat migration only
+let notes = {};
+let fbReady = false;
+
+// Migrate old local data once if present (so nothing is lost on first run)
+try {
+  const local = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  if (local && Object.keys(local).length) notes = local;
+} catch(e) {}
+
+let canEdit = false;
+
+function doLogin() {
+  const pw = document.getElementById("pwInput").value;
+  if (pw === PASSWORD) {
+    canEdit = true;
+    document.getElementById("loginOverlay").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    document.getElementById("modeBadge").textContent = "✏️ Chế độ chỉnh sửa";
+    document.getElementById("btnReset").style.display = "block";
+    initApp();
+  } else {
+    document.getElementById("loginErr").style.display = "block";
+  }
+}
+function enterViewOnly() {
+  canEdit = false;
+  document.getElementById("loginOverlay").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("modeBadge").textContent = "👁 Chỉ xem";
+  initApp();
+}
+
+function save() {
+  if (window.__fb) {
+    window.__fb.set(window.__fb.notesRef, notes).catch(err => {
+      console.error("Firebase save error:", err);
+      const t = document.getElementById("saveToast");
+      t.textContent = "⚠ Lỗi mạng, thử lại!";
+      t.classList.add("show");
+      setTimeout(() => { t.classList.remove("show"); t.textContent = "✅ Đã lưu!"; }, 2000);
+    });
+  }
+  const t = document.getElementById("saveToast");
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1500);
+}
+
+function key(shop, vid) { return shop + "||" + vid; }
+function getList(shop, vid) { return notes[key(shop,vid)] || []; }
+function getCount(shop, vid) { return getList(shop,vid).length; }
+function totalFor(shop) { return VIOLATIONS.reduce((s,v) => s + getCount(shop,v.id), 0); }
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function isoToVN(iso) {
+  if (!iso) return "";
+  const [y,m,d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+let curShop = null, curVid = null, editingIdx = null;
+
+function openModal(shop, vid) {
+  curShop = shop; curVid = vid; editingIdx = null;
+  const vio = VIOLATIONS.find(v => v.id === vid);
+  document.getElementById("mShop").textContent = "🏪 " + shop;
+  document.getElementById("mVio").textContent = vio.short + " — " + vio.label;
+  document.getElementById("mDate").value = todayISO();
+  document.getElementById("mNote").value = "";
+  document.getElementById("mInput").style.display = canEdit ? "block" : "none";
+  renderList();
+  document.getElementById("noteModal").style.display = "flex";
+}
+function closeNote() {
+  document.getElementById("noteModal").style.display = "none";
+  renderTables();
+}
+
+function renderList() {
+  const list = getList(curShop, curVid);
+  const el = document.getElementById("mList");
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-msg">Chưa có lỗi nào</div>';
+    return;
+  }
+  el.innerHTML = list.map((n, i) => `
+    <div class="note-item">
+      <div style="flex:1">
+        <div class="note-date">📅 ${n.date}</div>
+        ${canEdit && editingIdx === i
+          ? `<div class="edit-row">
+               <input class="edit-input" id="editInp" value="${n.note.replace(/"/g,'&quot;')}">
+               <button class="btn-save" onclick="saveEdit(${i})">Lưu</button>
+               <button class="btn-cancel" onclick="cancelEdit()">Huỷ</button>
+             </div>`
+          : `<div class="note-text">${n.note}</div>`}
+      </div>
+      ${canEdit && editingIdx !== i ? `<div class="note-actions">
+        <button class="icon-btn" onclick="startEdit(${i})">✏️</button>
+        <button class="icon-btn" onclick="deleteNote(${i})">🗑</button>
+      </div>` : ""}
+    </div>
+  `).join("");
+}
+
+function addNote() {
+  if (!canEdit) return;
+  const note = document.getElementById("mNote").value.trim();
+  if (!note) return;
+  const date = isoToVN(document.getElementById("mDate").value);
+  const k = key(curShop, curVid);
+  if (!notes[k]) notes[k] = [];
+  notes[k].push({ date, note });
+  save();
+  document.getElementById("mNote").value = "";
+  renderList();
+}
+function deleteNote(i) {
+  const k = key(curShop, curVid);
+  notes[k].splice(i, 1);
+  if (!notes[k].length) delete notes[k];
+  save(); editingIdx = null; renderList();
+}
+function startEdit(i) {
+  editingIdx = i; renderList();
+  setTimeout(() => document.getElementById("editInp")?.focus(), 50);
+}
+function cancelEdit() { editingIdx = null; renderList(); }
+function saveEdit(i) {
+  const val = document.getElementById("editInp").value.trim();
+  if (!val) return;
+  notes[key(curShop, curVid)][i].note = val;
+  save(); editingIdx = null; renderList();
+}
+
+// EXPORT EXCEL
+function styleCell(ws, cellRef, opts = {}) {
+  if (!ws[cellRef]) return;
+  ws[cellRef].s = {
+    font: { name: opts.font || "Calibri", sz: opts.sz || 11, bold: !!opts.bold, italic: !!opts.italic, color: { rgb: opts.color || "1A2A4A" } },
+    fill: opts.bg ? { patternType: "solid", fgColor: { rgb: opts.bg } } : undefined,
+    alignment: { horizontal: opts.align || "center", vertical: "center", wrapText: !!opts.wrap },
+    border: opts.noBorder ? undefined : {
+      top:    { style: opts.borderStyle || "thin", color: { rgb: opts.borderColor || "D6DEEA" } },
+      bottom: { style: opts.borderStyle || "thin", color: { rgb: opts.borderColor || "D6DEEA" } },
+      left:   { style: opts.borderStyle || "thin", color: { rgb: opts.borderColor || "D6DEEA" } },
+      right:  { style: opts.borderStyle || "thin", color: { rgb: opts.borderColor || "D6DEEA" } },
+    }
+  };
+}
+
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+  const REGION_COLORS = { "HỒ CHÍ MINH": "1565C0", "LONG AN": "00695C" };
+  const HDR_BG = "0D2A4A";
+  const NAVY = "0D47A1";
+  const ORANGE = "E65100";
+
+  REGIONS.forEach(region => {
+    const regionColor = REGION_COLORS[region.name] || NAVY;
+    const lastCol = 2 + VIOLATIONS.length;
+    const cols = ["A","B","C","D","E","F","G","H","I","J"].slice(0, lastCol + 1);
+
+    const today = new Date();
+    const dateStr = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
+
+    const titleRow = [`AQUA · BẢNG THEO DÕI VI PHẠM — ${region.name}`, ...Array(lastCol).fill("")];
+    const dateRow = [`Cập nhật: ${dateStr}    •    Tổng số cửa hàng: ${region.shops.length}`, ...Array(lastCol).fill("")];
+    const spacerRow = Array(lastCol + 1).fill("");
+    const hdrRow = ["STT", "CỬA HÀNG", ...VIOLATIONS.map(v => `${v.short}\n${v.excelLabel}`), "TỔNG"];
+
+    const dataRows = region.shops.map((shop, idx) => {
+      const total = totalFor(shop);
+      return [idx+1, shop, ...VIOLATIONS.map(v => getCount(shop, v.id) || ""), total || 0];
+    });
+
+    const grandTotal = region.shops.reduce((s, shop) => s + totalFor(shop), 0);
+    const cleanShops = region.shops.filter(shop => totalFor(shop) === 0).length;
+    const footerRow = ["", `Cửa hàng không lỗi: ${cleanShops}/${region.shops.length}`, ...Array(VIOLATIONS.length - 1).fill(""), "TỔNG CỘNG", grandTotal];
+
+    const allRows = [titleRow, dateRow, spacerRow, hdrRow, ...dataRows, spacerRow, footerRow];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+    const TITLE_R = 1, DATE_R = 2, HDR_R = 4;
+    const DATA_START = 5;
+    const DATA_END = DATA_START + dataRows.length - 1;
+    const FOOTER_R = DATA_END + 2;
+
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } },
+      { s: { r: FOOTER_R - 1, c: 0 }, e: { r: FOOTER_R - 1, c: 1 } },
+      { s: { r: FOOTER_R - 1, c: 2 }, e: { r: FOOTER_R - 1, c: lastCol - 1 } },
+    ];
+
+    ws["!cols"] = [{ wch: 6 }, { wch: 24 }, ...VIOLATIONS.map(() => ({ wch: 16 })), { wch: 11 }];
+
+    ws["!rows"] = [];
+    ws["!rows"][0] = { hpt: 30 };
+    ws["!rows"][1] = { hpt: 20 };
+    ws["!rows"][2] = { hpt: 6 };
+    ws["!rows"][3] = { hpt: 42 };
+    for (let i = 0; i < dataRows.length; i++) ws["!rows"][DATA_START + i] = { hpt: 24 };
+    ws["!rows"][FOOTER_R - 1] = { hpt: 8 };
+    ws["!rows"][FOOTER_R] = { hpt: 26 };
+
+    cols.forEach(c => styleCell(ws, `${c}${TITLE_R}`, { bold: true, sz: 15, color: "FFFFFF", bg: regionColor, align: "left", noBorder: true }));
+    ws[`A${TITLE_R}`].v = "  " + ws[`A${TITLE_R}`].v;
+
+    cols.forEach(c => styleCell(ws, `${c}${DATE_R}`, { italic: true, sz: 10, color: "5A6B85", bg: "F4F7FB", align: "left", noBorder: true }));
+    ws[`A${DATE_R}`].v = "  " + ws[`A${DATE_R}`].v;
+
+    cols.forEach(c => styleCell(ws, `${c}${HDR_R}`, { bold: true, sz: 10, color: "FFFFFF", bg: HDR_BG, align: "center", wrap: true, borderColor: "0A1F38" }));
+
+    dataRows.forEach((row, i) => {
+      const exRow = DATA_START + i + 1;
+      const bg = i % 2 === 0 ? "F6F9FD" : "FFFFFF";
+      styleCell(ws, `A${exRow}`, { color: "9AA5B8", bg, align: "center", sz: 10 });
+      styleCell(ws, `B${exRow}`, { bold: true, color: "1A2A4A", bg, align: "left", sz: 11 });
+      VIOLATIONS.forEach((v, vi) => {
+        const cnt = getCount(region.shops[i], v.id);
+        const col = cols[2 + vi];
+        if (cnt >= 3) styleCell(ws, `${col}${exRow}`, { bold: true, color: "B71C1C", bg: "FDECEA", align: "center" });
+        else if (cnt > 0) styleCell(ws, `${col}${exRow}`, { bold: true, color: ORANGE, bg: "FFF4E0", align: "center" });
+        else styleCell(ws, `${col}${exRow}`, { color: "C7CEDB", bg, align: "center" });
+      });
+      const total = totalFor(region.shops[i]);
+      const totalCol = cols[cols.length - 1];
+      if (total >= 5) styleCell(ws, `${totalCol}${exRow}`, { bold: true, sz: 12, color: "B71C1C", bg: "FDECEA", align: "center" });
+      else if (total > 0) styleCell(ws, `${totalCol}${exRow}`, { bold: true, sz: 12, color: ORANGE, bg: "FFF4E0", align: "center" });
+      else styleCell(ws, `${totalCol}${exRow}`, { bold: true, sz: 12, color: "2E7D32", bg: "E9F7EC", align: "center" });
+    });
+
+    cols.forEach(c => styleCell(ws, `${c}${FOOTER_R + 1}`, { bold: true, sz: 11, color: "FFFFFF", bg: regionColor, align: "center", borderColor: regionColor }));
+    styleCell(ws, `B${FOOTER_R + 1}`, { bold: true, sz: 10, color: "FFFFFF", bg: regionColor, align: "left", borderColor: regionColor });
+
+    ws["!freeze"] = { xSplit: 0, ySplit: HDR_R };
+    ws["!autofilter"] = { ref: `A${HDR_R}:${cols[cols.length-1]}${DATA_END+1}` };
+
+    XLSX.utils.book_append_sheet(wb, ws, region.name);
+  });
+
+  const today = new Date();
+  const dateStr = `${String(today.getDate()).padStart(2,"0")}/${String(today.getMonth()+1).padStart(2,"0")}/${today.getFullYear()}`;
+  const sumRows = [
+    ["AQUA · CHI TIẾT LỖI THEO NGÀY", "", "", "", ""],
+    [`Cập nhật: ${dateStr}`, "", "", "", ""],
+    ["", "", "", "", ""],
+    ["KHU VỰC", "CỬA HÀNG", "LOẠI LỖI", "NGÀY", "MÔ TẢ"]
+  ];
+  let hasData = false;
+  REGIONS.forEach(region => {
+    region.shops.forEach(shop => {
+      VIOLATIONS.forEach(v => {
+        getList(shop, v.id).forEach(n => {
+          sumRows.push([region.name, shop, `${v.short} – ${v.label}`, n.date, n.note]);
+          hasData = true;
+        });
+      });
+    });
+  });
+  if (!hasData) sumRows.push(["—", "Chưa có dữ liệu vi phạm nào được ghi nhận", "", "", ""]);
+
+  const wsTH = XLSX.utils.aoa_to_sheet(sumRows);
+  wsTH["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+  ];
+  wsTH["!cols"] = [{ wch: 15 }, { wch: 24 }, { wch: 30 }, { wch: 12 }, { wch: 48 }];
+  wsTH["!rows"] = [{ hpt: 30 }, { hpt: 20 }, { hpt: 6 }, { hpt: 26 }];
+  ["A","B","C","D","E"].forEach(c => {
+    styleCell(wsTH, `${c}1`, { bold: true, sz: 15, color: "FFFFFF", bg: NAVY, align: "left", noBorder: true });
+    styleCell(wsTH, `${c}2`, { italic: true, sz: 10, color: "5A6B85", bg: "F4F7FB", align: "left", noBorder: true });
+    styleCell(wsTH, `${c}4`, { bold: true, color: "FFFFFF", bg: HDR_BG, align: "center", sz: 10 });
+  });
+  wsTH["A1"].v = "  " + wsTH["A1"].v;
+  wsTH["A2"].v = "  " + wsTH["A2"].v;
+
+  if (hasData) {
+    for (let r = 5; r <= sumRows.length; r++) {
+      const bg = (r - 5) % 2 === 0 ? "F6F9FD" : "FFFFFF";
+      ["A","B","C","E"].forEach(c => styleCell(wsTH, `${c}${r}`, { bg, align: "left", sz: 10, color: "333D52" }));
+      styleCell(wsTH, `D${r}`, { bg, align: "center", sz: 10, color: "333D52" });
+      styleCell(wsTH, `B${r}`, { bg, align: "left", sz: 10, bold: true, color: "1A2A4A" });
+    }
+  }
+  wsTH["!freeze"] = { xSplit: 0, ySplit: 4 };
+  if (hasData) wsTH["!autofilter"] = { ref: `A4:E${sumRows.length}` };
+
+  XLSX.utils.book_append_sheet(wb, wsTH, "Chi tiết lỗi");
+
+  const d = new Date();
+  const fname = `AQUA_VePham_${d.getDate()}-${d.getMonth()+1}-${d.getFullYear()}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+
+// SUMMARY
+function getSummaryText() {
+  const lines = ["📋 TỔNG HỢP LỖI TUẦN — AQUA\n"];
+  REGIONS.forEach(r => {
+    const hasAny = r.shops.some(s => totalFor(s) > 0);
+    if (!hasAny) return;
+    lines.push("📍 " + r.name);
+    r.shops.forEach(shop => {
+      const total = totalFor(shop);
+      if (!total) return;
+      lines.push("  🏪 " + shop + " — " + total + " lỗi");
+      VIOLATIONS.forEach(v => {
+        const list = getList(shop, v.id);
+        if (!list.length) return;
+        lines.push("    [" + v.short + "] " + v.label);
+        list.forEach(n => lines.push("      • " + n.date + ": " + n.note));
+      });
+    });
+    lines.push("");
+  });
+  if (lines.length === 1) lines.push("Tuần này không có lỗi nào! 🎉");
+  return lines.join("\n");
+}
+function openSummary() {
+  document.getElementById("summaryText").textContent = getSummaryText();
+  document.getElementById("summaryModal").style.display = "flex";
+}
+function copySummary() {
+  navigator.clipboard.writeText(getSummaryText()).then(() => {
+    const btn = document.getElementById("btnCopy");
+    btn.textContent = "✅ Đã copy!"; btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "📋 Copy"; btn.classList.remove("copied"); }, 2000);
+  });
+}
+
+let activeRegion = "Tất cả";
+function renderTabs() {
+  const tabs = ["Tất cả", ...REGIONS.map(r => r.name)];
+  document.getElementById("tabs").innerHTML = tabs.map(t =>
+    `<button class="tab ${t===activeRegion?'active':''}" onclick="switchTab('${t}')">${t}</button>`
+  ).join("");
+}
+function switchTab(t) { activeRegion = t; renderTabs(); renderTables(); }
+
+function renderLegend() {
+  document.getElementById("legend").innerHTML = VIOLATIONS.map(v =>
+    `<div class="legend-item"><span class="badge">${v.short}</span><span style="color:#555">${v.label}</span></div>`
+  ).join("");
+}
+
+function renderTables() {
+  const regions = activeRegion === "Tất cả" ? REGIONS : REGIONS.filter(r => r.name === activeRegion);
+  document.getElementById("tables").innerHTML = regions.map(region => `
+    <div class="region-card">
+      <div class="region-header" style="background:${region.color}">
+        <span style="font-size:16px">📍</span>
+        <span class="region-name">${region.name}</span>
+        <span class="region-count">${region.shops.length} cửa hàng</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th class="shop-col">Cửa hàng</th>
+            ${VIOLATIONS.map(v => `<th>${v.short}</th>`).join("")}
+            <th class="total-col">Tổng</th>
+          </tr></thead>
+          <tbody>
+            ${region.shops.map((shop, idx) => {
+              const total = totalFor(shop);
+              const totalClass = total === 0 ? "total-zero" : total >= 5 ? "total-high" : "total-low";
+              return `<tr class="${idx%2===0?'even':'odd'}">
+                <td class="shop-td">
+                  <span class="shop-num" style="background:${region.color}">${idx+1}</span>${shop}
+                </td>
+                ${VIOLATIONS.map(v => {
+                  const cnt = getCount(shop, v.id);
+                  const cls = cnt===0?"vio-zero":cnt>=3?"vio-high":"vio-low";
+                  const clickable = canEdit ? `onclick="openModal('${shop.replace(/'/g,"\\'")}',${v.id})"` : `onclick="openModal('${shop.replace(/'/g,"\\'")}',${v.id})"`;
+                  return `<td><button class="vio-btn ${cls}" ${clickable}>${cnt>0?cnt:"—"}</button></td>`;
+                }).join("")}
+                <td><span class="total-badge ${totalClass}">${total||"0"}</span></td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `).join("");
+}
+
+function openReset() {
+  document.getElementById("resetModal").style.display = "flex";
+}
+function doReset() {
+  notes = {};
+  if (window.__fb) window.__fb.set(window.__fb.notesRef, {}).catch(err => console.error(err));
+  localStorage.removeItem(STORAGE_KEY);
+  document.getElementById("resetModal").style.display = "none";
+  renderTables();
+  const t = document.getElementById("saveToast");
+  t.textContent = "🗑 Đã reset xong!";
+  t.classList.add("show");
+  setTimeout(() => { t.classList.remove("show"); t.textContent = "✅ Đã lưu!"; }, 2000);
+}
+
+let firebaseListenerStarted = false;
+function startFirebaseSync() {
+  if (firebaseListenerStarted) return;
+  if (!window.__fb) { setTimeout(startFirebaseSync, 200); return; }
+  firebaseListenerStarted = true;
+  window.__fb.onValue(window.__fb.notesRef, (snapshot) => {
+    const remote = snapshot.val();
+    notes = remote || notes || {};
+    fbReady = true;
+    // Re-render whatever is currently visible
+    if (document.getElementById("app").style.display !== "none") {
+      renderTables();
+      // If a note modal is open, refresh its list too
+      if (document.getElementById("noteModal").style.display === "flex" && curShop) {
+        renderList();
+      }
+    }
+  }, (err) => {
+    console.error("Firebase read error:", err);
+  });
+}
+
+function initApp() {
+  renderLegend();
+  renderTabs();
+  renderTables();
+  startFirebaseSync();
+}
+</script>
+</body>
+</html>
